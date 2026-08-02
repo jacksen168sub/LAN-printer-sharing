@@ -1,0 +1,19 @@
+# 环境变量(本地/生产都不入库,用 .env.example 提供模板)
+.env
+.env.*
+!.env.example
+
+# 自签测试证书/私钥(本地 HTTPS 调试用,勿入库)
+*.pem
+
+# IDE 内部文档
+.trae/
+
+# 依赖与构建产物
+node_modules
+dist
+.wrangler
+.dev.vars
+*.local
+*.log
+.DS_Store

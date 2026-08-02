@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WebRTC 连通性 spike</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 16px; max-width: 1100px; margin-inline: auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 14px 0 6px; }
+  .muted { color: #888; }
+  small { color: #888; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  .card { border: 1px solid rgba(127,127,127,0.3); border-radius: 8px; padding: 10px; background: rgba(127,127,127,0.08); }
+  textarea { width: 100%; height: 110px; box-sizing: border-box; font: 11px ui-monospace, "Cascadia Mono", Consolas, monospace; resize: vertical; }
+  button { padding: 6px 10px; margin: 4px 2px 0; cursor: pointer; border-radius: 6px; border: 1px solid rgba(127,127,127,0.4); background: rgba(127,127,127,0.12); color: inherit; }
+  button:hover { background: rgba(127,127,127,0.22); }
+  .row { margin: 6px 0; }
+  label { display: inline-flex; gap: 4px; align-items: center; margin-right: 10px; }
+  select, input[type=text] { padding: 3px; }
+  #log { white-space: pre-wrap; background: #0b0b0b; color: #6f6; padding: 10px; height: 340px; overflow: auto; border-radius: 8px; font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .verdict { font-weight: bold; padding: 8px; border-radius: 6px; margin: 6px 0; }
+  .ok { background: rgba(45,106,45,0.4); } .fail { background: rgba(138,45,45,0.5); } .idle { background: rgba(127,127,127,0.15); }
+</style>
+</head>
+<body>
+<h1>WebRTC 连通性 spike<span class="muted"> · 手动信令 · 非 trickle ICE</span></h1>
+<p class="muted">目的:测同局域网浏览器→浏览器 WebRTC DataChannel 能否直连,以及走哪种 ICE 候选(host / srflx / relay)。无服务器,SDP 手动复制粘贴。</p>
+
+<div class="row card">
+  <strong>配置</strong>
+  <label><input type="checkbox" id="useStun" checked> 用 STUN (stun.l.google.com:19302)</label>
+  <label>ICE 策略:
+    <select id="icePolicy"><option value="all">all(默认)</option><option value="relay">relay(仅 TURN,需填 TURN)</option></select>
+  </label>
+  <label>TURN(可选): <input type="text" id="turnUrl" placeholder="turn:host:3478" size="22"></label>
+  <span class="muted" id="origin"></span>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>A · 发起方</h2>
+    <button id="btnOffer">1. 创建 Offer</button>
+    <div class="row"><textarea id="offerOut" placeholder="点上面按钮后,这里出现 Offer JSON。复制给对方。"></textarea></div>
+    <button id="copyOffer">复制 Offer</button>
+    <hr style="border-color:rgba(127,127,127,0.25)">
+    <h2>A · 贴回 Answer</h2>
+    <textarea id="answerIn" placeholder="把对方生成的 Answer JSON 贴到这里"></textarea>
+    <button id="btnApplyAnswer">2. 应用 Answer</button>
+  </div>
+
+  <div class="card">
+    <h2>B · 应答方</h2>
+    <textarea id="offerIn" placeholder="把发起方的 Offer JSON 贴到这里"></textarea>
+    <button id="btnAccept">3. 接受 Offer 并生成 Answer</button>
+    <div class="row"><textarea id="answerOut" placeholder="点上面按钮后,这里出现 Answer JSON。复制回发起方。"></textarea></div>
+    <button id="copyAnswer">复制 Answer</button>
+  </div>
+
+  <div class="card">
+    <h2>状态</h2>
+    <div id="verdict" class="verdict idle">未连接</div>
+    <div class="row"><small>会话 ID:</small> <span id="sid"></span></div>
+    <div class="row"><small>角色:</small> <span id="role" class="muted">—</span></div>
+    <div class="row"><small>ICE 连接:</small> <span id="iceState" class="muted">—</span></div>
+    <div class="row"><small>连接状态:</small> <span id="connState" class="muted">—</span></div>
+    <div class="row"><small>DataChannel:</small> <span id="dcState" class="muted">—</span></div>
+    <div class="row"><small>候选统计:</small> <span id="candStats" class="muted">host=0 srflx=0 relay=0</span></div>
+    <div class="row"><button id="btnPing">发送 Ping</button> <span id="pingResult" class="muted"></span></div>
+    <div class="row"><button id="btnReset">重置(重来)</button></div>
+  </div>
+</div>
+
+<h2>日志</h2>
+<div id="log"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const sid = crypto.randomUUID().slice(0,8);
+$('sid').textContent = sid;
+$('origin').textContent = 'origin: ' + location.origin;
+const logEl = $('log');
+function log(msg){ const t = new Date().toLocaleTimeString(); logEl.textContent += `[${t}] ${msg}\n`; logEl.scrollTop = logEl.scrollHeight; }
+function setVerdict(text, cls){ const v=$('verdict'); v.textContent=text; v.className='verdict '+(cls||'idle'); }
+
+let pc, dc, role=null, t0=null;
+const candStats = { host:0, srflx:0, relay:0 };
+
+function iceServers(){
+  const servers=[];
+  if($('useStun').checked) servers.push({ urls:'stun:stun.l.google.com:19302' });
+  const turn=$('turnUrl').value.trim();
+  if(turn) servers.push({ urls:turn }); // 真实 TURN 需补 credential/username
+  return servers;
+}
+function makePc(){
+  const pc = new RTCPeerConnection({ iceServers: iceServers(), iceTransportPolicy: $('icePolicy').value });
+  pc.onicecandidate = e => { if(e.candidate) parseCand(e.candidate.candidate); };
+  pc.onicegatheringstatechange = () => log('ICE gathering: ' + pc.iceGatheringState);
+  pc.oniceconnectionstatechange = () => {
+    $('iceState').textContent = pc.iceConnectionState;
+    log('ICE 连接: ' + pc.iceConnectionState);
+    if(pc.iceConnectionState==='connected' || pc.iceConnectionState==='completed'){
+      const dt = t0 ? Math.round(performance.now()-t0) : 0;
+      setVerdict('✅ 连通 ('+pc.iceConnectionState+', '+dt+'ms)', 'ok');
+      log('>>> 连通! 耗时 '+dt+'ms');
+    } else if(pc.iceConnectionState==='failed'){
+      setVerdict('❌ 连接失败(多半需要 TURN,见日志候选类型)', 'fail');
+    }
+  };
+  pc.onconnectionstatechange = () => { $('connState').textContent = pc.connectionState; log('连接状态: '+pc.connectionState); };
+  return pc;
+}
+function parseCand(s){
+  const m = /typ (host|srflx|relay)/.exec(s);
+  if(!m) return;
+  const typ = m[1];
+  candStats[typ]++;
+  // candidate: <foundation> <component> <proto> <priority> <addr> <port> typ <type> ...
+  const parts = s.split(' ');
+  const addr = (parts[4] && parts[5]) ? (parts[4]+':'+parts[5]) : '?';
+  const isMdns = typ==='host' && /\.local\b/.test(s);
+  updateCandStats();
+  log('  候选 ['+typ+'] '+addr + (isMdns ? '   ⚠ mDNS 名(.local),对方浏览器大概率解析不了 → host 路径失效' : ''));
+}
+function updateCandStats(){ $('candStats').textContent = 'host='+candStats.host+' srflx='+candStats.srflx+' relay='+candStats.relay; }
+
+function waitForIceComplete(pc, timeoutMs=4000){
+  return new Promise(resolve=>{
+    if(pc.iceGatheringState==='complete') return resolve();
+    const t = setTimeout(()=>{ log('⚠ ICE gathering 超时('+timeoutMs+'ms),用当前 SDP 继续(候选可能不全)'); resolve(); }, timeoutMs);
+    const check=()=>{ if(pc.iceGatheringState==='complete'){ clearTimeout(t); pc.removeEventListener('icegatheringstatechange', check); resolve(); } };
+    pc.addEventListener('icegatheringstatechange', check);
+  });
+}
+async function copyText(text){ try{ await navigator.clipboard.writeText(text); log('已复制到剪贴板'); }catch(e){ log('复制失败,请手动选中 Ctrl+C'); } }
+
+// A: 创建 Offer
+$('btnOffer').onclick = async () => {
+  try{
+    if(pc){ try{ pc.close(); }catch(e){} }
+    role='offerer'; $('role').textContent='发起方 (A)';
+    pc = makePc();
+    dc = pc.createDataChannel('test', { ordered:true });
+    wireDc(dc);
+    lockRole();
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    log('创建 offer,等待 ICE 收集...');
+    await waitForIceComplete(pc);
+    updateCandStats();
+    $('offerOut').value = JSON.stringify({ type:'offer', sdp: pc.localDescription.sdp });
+    log('Offer 已生成(含候选)。复制到对方。');
+  }catch(e){ log('错误: '+e.message); }
+};
+
+// B: 接受 Offer 并生成 Answer
+$('btnAccept').onclick = async () => {
+  const raw = $('offerIn').value.trim();
+  if(!raw){ log('请先贴入 Offer'); return; }
+  try{
+    role='answerer'; $('role').textContent='应答方 (B)';
+    pc = makePc();
+    pc.ondatachannel = e => { dc=e.channel; wireDc(dc); };
+    lockRole();
+    const offer = JSON.parse(raw);
+    await pc.setRemoteDescription(offer);
+    log('收到 offer,生成 answer...');
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    t0 = performance.now();
+    await waitForIceComplete(pc);
+    updateCandStats();
+    $('answerOut').value = JSON.stringify({ type:'answer', sdp: pc.localDescription.sdp });
+    log('Answer 已生成。复制回发起方。');
+  }catch(e){ log('错误: '+e.message); }
+};
+
+// A: 应用 Answer
+$('btnApplyAnswer').onclick = async () => {
+  const raw = $('answerIn').value.trim();
+  if(!raw){ log('请先贴入 Answer'); return; }
+  if(!pc){ log('请先点 "创建 Offer"'); return; }
+  if(pc.signalingState !== 'have-local-offer'){
+    log('⚠ 当前信令状态: '+pc.signalingState+'。应用 Answer 需要 have-local-offer(你是发起方且已建 Offer)。角色可能搞混了,点"重置"重来。');
+    return;
+  }
+  try{
+    const answer = JSON.parse(raw);
+    t0 = performance.now();
+    await pc.setRemoteDescription(answer);
+    log('已应用 answer,等待连通...');
+  }catch(e){ log('错误: '+e.message); }
+};
+
+function wireDc(channel){
+  channel.onopen  = () => { $('dcState').textContent='open'; log('DataChannel open ✅ 双向数据通道可用'); };
+  channel.onclose = () => { $('dcState').textContent='closed'; log('DataChannel closed'); };
+  channel.onerror = e => log('DataChannel error: '+ (e.message||e));
+  channel.onmessage = e => { $('pingResult').textContent='收到: '+e.data; log('收到消息: '+e.data); };
+}
+$('btnPing').onclick = () => {
+  if(dc && dc.readyState==='open'){ dc.send('ping from '+sid+' @ '+Date.now()); $('pingResult').textContent='已发送 ping'; }
+  else log('DataChannel 未 open,无法发送');
+};
+$('copyOffer').onclick  = () => copyText($('offerOut').value);
+$('copyAnswer').onclick = () => copyText($('answerOut').value);
+
+function lockRole(){
+  $('btnOffer').disabled = role==='answerer';
+  $('btnAccept').disabled = role==='offerer';
+  $('btnApplyAnswer').disabled = role==='answerer';
+}
+function unlockAll(){ ['btnOffer','btnAccept','btnApplyAnswer'].forEach(id=>$(id).disabled=false); }
+$('btnReset').onclick = () => {
+  if(pc){ try{ pc.close(); }catch(e){} }
+  pc=null; dc=null; role=null;
+  ['offerOut','offerIn','answerOut','answerIn'].forEach(id=>$(id).value='');
+  $('role').textContent='—'; $('iceState').textContent='—'; $('connState').textContent='—';
+  $('dcState').textContent='—'; $('pingResult').textContent='';
+  candStats.host=candStats.srflx=candStats.relay=0; updateCandStats();
+  setVerdict('已重置','idle');
+  unlockAll();
+  log('已重置,可重新开始。');
+};
+
+if (!window.isSecureContext || typeof RTCPeerConnection === 'undefined') {
+  log('⚠ 非安全上下文或 WebRTC 不可用。isSecureContext='+window.isSecureContext+
+      ', RTCPeerConnection='+(typeof RTCPeerConnection));
+  log('  http://<局域网IP> 不行!请用 https://<本机LAN-IP>:3001(自签证书,点"高级→继续前往")或 https://localhost:3000。');
+  setVerdict('非安全上下文','bad');
+} else {
+  log('✓ 安全上下文,WebRTC 可用。');
+}
+log('WebRTC spike 已加载。会话 ID: '+sid);
+log('同机两标签页可做 sanity(localhost 是安全上下文);真实跨设备请把本页放到 HTTPS 静态主机(GitHub/Cloudflare Pages),两设备各自打开,SDP 用任意聊天互传。');
+log('关键看日志里的候选类型: host 带 .local = mDNS 混淆(坏信号);host 带真实内网 IP = 可直连;最终 ICE 是否 connected。');
+</script>
+</body>
+</html>

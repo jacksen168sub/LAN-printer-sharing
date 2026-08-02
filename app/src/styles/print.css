@@ -1,0 +1,35 @@
+/* 打印样式:所见即所打。@page 方向由 PrintView 在打印前动态注入(lps-print-page)。 */
+
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  /* 隐藏带 .no-print 的元素(顶栏、工具条、编辑表单、预览面板等) */
+  .no-print {
+    display: none !important;
+  }
+  .content {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  /* 还原为原尺寸:去掉屏上缩放 transform 与外层固定高度 */
+  .ps-stage {
+    height: auto !important;
+    overflow: visible !important;
+    width: auto !important;
+  }
+  .ps-sheet {
+    transform: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+  .fold-line {
+    display: none !important;
+  }
+}
