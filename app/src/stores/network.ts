@@ -112,6 +112,9 @@ export function startNetwork() {
     if (st === 'open') {
       const own = getOwnContent();
       if (own) safeSend(peer, 'content', own);
+      // 自动 ping 一次:1 秒内填上延迟,避免 peer 卡片平时留空 "—"
+      // 双向连接时两端都会各自 ping,各自测自己的 RTT,互不干扰
+      pingPeer(peer);
     }
   });
   void transport.connect();
