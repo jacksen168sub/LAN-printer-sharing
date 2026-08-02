@@ -6,9 +6,26 @@ import { identity, getOwnContent } from './identity';
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:8787';
 // ws/wss → http/https,用于 fetch /ip(CF 返回的公网 IP 即分房依据,权威)
 const SIGNALING_HTTP = SIGNALING_URL.replace(/^ws/, 'http');
+const ROOM_KEY = 'lps.room';
 
 // 消息缓冲上限:防止长会话内存只增不减
 const MAX_MESSAGES = 100;
+
+/** 手动房间码持久化(空 = 用服务端按 IP 自动分配的码)。 */
+function loadManualRoom(): string | null {
+  return localStorage.getItem(ROOM_KEY) || null;
+}
+export function getManualRoom(): string | null {
+  return loadManualRoom();
+}
+
+/** 按 manual room 拼接信令 URL:有手动码则带 ?room=CODE,否则裸 URL(服务端自动分房)。 */
+function buildSignalingUrl(): string {
+  const m = loadManualRoom();
+  if (!m) return SIGNALING_URL;
+  const sep = SIGNALING_URL.includes('?') ? '&' : '?';
+  return SIGNALING_URL + sep + 'room=' + encodeURIComponent(m);
+}
 
 interface NetworkState {
   peers: PeerId[];
@@ -18,6 +35,7 @@ interface NetworkState {
   peerContents: Record<string, PeerContent>;
   peerLatencies: Record<string, number>;
   myIp: string | null;
+  myAutoCode: string | null;
   myRoom: string | null;
 }
 
@@ -29,6 +47,7 @@ const state = reactive<NetworkState>({
   peerContents: {},
   peerLatencies: {},
   myIp: null,
+  myAutoCode: null,
   myRoom: null,
 });
 
@@ -43,7 +62,7 @@ function safeSend(to: PeerId, type: DcEnvelope['type'], payload: unknown) {
 
 export function startNetwork() {
   if (transport) return;
-  transport = new WebRTCTransport(identity.id, SIGNALING_URL);
+  transport = new WebRTCTransport(identity.id, buildSignalingUrl());
   transport.onPeersChange((peers) => {
     const prev = state.peers;
     state.peers = peers;
@@ -97,11 +116,14 @@ export function startNetwork() {
   });
   void transport.connect();
 
-  // 拉取本机公网 IP + 房间键(CF 返回,即分房依据),信令卡片展示用
-  fetch(`${SIGNALING_HTTP}/ip`)
+  // 拉取本机公网 IP + 自动房间码 + 当前房间(CF 返回,即分房依据),房间卡片展示用
+  const m = loadManualRoom();
+  const ipUrl = m ? `${SIGNALING_HTTP}/ip?room=${encodeURIComponent(m)}` : `${SIGNALING_HTTP}/ip`;
+  fetch(ipUrl)
     .then((r) => r.json())
-    .then((d: { ip?: string; room?: string }) => {
+    .then((d: { ip?: string; autoCode?: string; room?: string }) => {
       state.myIp = d.ip ?? null;
+      state.myAutoCode = d.autoCode ?? null;
       state.myRoom = d.room ?? null;
     })
     .catch(() => { /* 网络异常忽略,卡片显示 — */ });
@@ -118,6 +140,16 @@ export function reconnectSignaling() {
   // 重置信令就绪态,UI 立即反映"连接中"
   state.signalingReady = false;
   startNetwork();
+}
+
+/**
+ * 切换房间:code 非空 → 持久化并用 ?room=CODE 重连;code 空 → 清除手动码,回到服务端自动分房。
+ * 重连后 presence 重新同步,/ip 重新拉取(myRoom 随之更新)。
+ */
+export function setRoom(code: string | null) {
+  if (code) localStorage.setItem(ROOM_KEY, code);
+  else localStorage.removeItem(ROOM_KEY);
+  reconnectSignaling();
 }
 
 export function sendToPeer(to: PeerId, type: DcEnvelope['type'], payload: unknown) {

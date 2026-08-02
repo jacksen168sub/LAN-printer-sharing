@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { identity, getOwnContent } from '../stores/identity';
-import { network, pingPeer, reconnectSignaling } from '../stores/network';
+import { identity, getOwnContent, formatId } from '../stores/identity';
+import { network, pingPeer, reconnectSignaling, setRoom, getManualRoom } from '../stores/network';
 import { getTemplate } from '../templates/registry';
 import { useI18n } from 'vue-i18n';
 import { peerStateLabel, setLocale, type Locale } from '../i18n';
@@ -14,6 +14,7 @@ const isDev = import.meta.env.DEV;
 const own = getOwnContent();
 const ownLabel = computed(() => (own ? getTemplate(own.content.type).label : null));
 const ownUpdated = computed(() => (own ? new Date(own.updatedAt).toLocaleString() : null));
+const idDisplay = computed(() => formatId(identity.id));
 
 function ownOrientLabel(): string {
   if (!own) return '';
@@ -36,18 +37,42 @@ function ping(p: string) {
 function onLocaleChange(e: Event) {
   setLocale((e.target as HTMLSelectElement).value as Locale);
 }
+
+// 房间码切换:手动输入覆盖服务端自动分房;留空重置回自动。
+const roomInput = ref(getManualRoom() ?? '');
+const isManual = computed(() => !!network.myRoom && !!network.myAutoCode && network.myRoom !== network.myAutoCode);
+function doSwitchRoom() {
+  const code = roomInput.value.trim();
+  if (!code) return;
+  setRoom(code);
+}
+function doResetAuto() {
+  roomInput.value = '';
+  setRoom(null);
+}
+
+// 复制本机 ID(32 hex 较长,提供复制便于比对)
+const copied = ref(false);
+function copyId() {
+  navigator.clipboard?.writeText(idDisplay.value)
+    .then(() => { copied.value = true; setTimeout(() => (copied.value = false), 1500); })
+    .catch(() => { /* 剪贴板不可用,忽略 */ });
+}
 </script>
 
 <template>
   <section class="card">
     <div class="id-head">
       <div class="label">{{ t('home.ownId') }}</div>
-      <select class="locale-select" :value="locale" @change="onLocaleChange" aria-label="Language">
-        <option value="zh-CN">中文</option>
-        <option value="en">EN</option>
-      </select>
+      <div class="id-actions">
+        <button type="button" class="mini-btn" @click="copyId">{{ copied ? t('common.copied') : t('common.copy') }}</button>
+        <select class="locale-select" :value="locale" @change="onLocaleChange" aria-label="Language">
+          <option value="zh-CN">中文</option>
+          <option value="en">EN</option>
+        </select>
+      </div>
     </div>
-    <div class="id">{{ identity.id }}</div>
+    <div class="id-long">{{ idDisplay }}</div>
   </section>
 
   <section class="card">
@@ -71,12 +96,24 @@ function onLocaleChange(e: Event) {
     </template>
   </section>
 
-  <!-- 信令状态:紧凑状态条 + 呼吸圆点 + IP/房间 + 右侧重连 -->
+  <!-- 信令状态:紧凑状态条 + 呼吸圆点 + 右侧重连 -->
   <section class="sig-bar" :class="network.signalingReady ? 'is-on' : 'is-off'">
     <span class="sig-dot"></span>
     <span class="sig-text">{{ t('home.signaling') }}:{{ network.signalingReady ? t('home.connected') : t('home.connecting') }}</span>
-    <span class="sig-ip" v-if="network.myIp">IP {{ network.myIp }}<span class="sig-room" v-if="network.myRoom"> · {{ t('home.room') }} {{ network.myRoom }}</span></span>
     <button type="button" class="sig-reconnect" @click="reconnectSignaling">{{ t('home.reconnect') }}</button>
+  </section>
+
+  <!-- 网络:公网 IP + 自动/当前房间码 + 手动切换 -->
+  <section class="card net-card">
+    <div class="label">{{ t('home.networkInfo') }}</div>
+    <div class="net-row"><span class="net-k">{{ t('home.currentIp') }}</span><span class="net-v">{{ network.myIp ?? '—' }}</span></div>
+    <div class="net-row"><span class="net-k">{{ t('home.autoRoom') }}</span><span class="net-v mono">{{ network.myAutoCode ?? '—' }}</span></div>
+    <div class="net-row"><span class="net-k">{{ t('home.currentRoom') }}</span><span class="net-v mono" :class="{ changed: isManual }">{{ network.myRoom ?? '—' }}</span></div>
+    <div class="net-switch">
+      <input class="room-input" v-model="roomInput" :placeholder="t('home.roomInput')" maxlength="12" inputmode="numeric" @keyup.enter="doSwitchRoom" />
+      <button type="button" class="btn btn-primary" @click="doSwitchRoom">{{ t('home.switchRoom') }}</button>
+      <button type="button" class="btn" v-if="isManual" @click="doResetAuto">{{ t('home.resetAuto') }}</button>
+    </div>
   </section>
 
   <section class="card">
@@ -90,7 +127,7 @@ function onLocaleChange(e: Event) {
         @click="router.push('/peer/' + p)"
       >
         <div class="peer-head">
-          <span class="peer-id">{{ p }}</span>
+          <span class="peer-id">{{ formatId(p) }}</span>
           <span class="peer-state">{{ t('home.channel') }}:{{ peerStateLabel(network.peerStates[p]) }}</span>
         </div>
         <div class="peer-foot">
@@ -121,14 +158,28 @@ function onLocaleChange(e: Event) {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 .label { font-size: 12px; color: #666; margin-bottom: 6px; }
-.id {
-  font-size: 36px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  font-family: ui-monospace, monospace;
+.id-long {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   color: #005ac1;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
 .id-head { display: flex; justify-content: space-between; align-items: center; }
+.id-actions { display: flex; gap: 6px; align-items: center; }
+.mini-btn {
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  background: transparent;
+  color: #005ac1;
+  cursor: pointer;
+}
+.mini-btn:hover { background: rgba(0, 90, 193, 0.08); }
 .locale-select {
   font: inherit;
   font-size: 12px;
@@ -139,6 +190,26 @@ function onLocaleChange(e: Event) {
   color: #555;
   cursor: pointer;
 }
+.net-card { display: flex; flex-direction: column; gap: 6px; }
+.net-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 13px; }
+.net-k { color: #666; flex: none; }
+.net-v { color: #333; text-align: right; word-break: break-all; }
+.net-v.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 15px; font-weight: 600; }
+.net-v.changed { color: #005ac1; }
+.net-switch { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.room-input {
+  flex: 1 1 120px;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  background: transparent;
+  color: inherit;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+.room-input:focus { outline: 2px solid #005ac1; border-color: #005ac1; }
 .own-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
 .own-type { font-weight: 600; }
 .own-meta { font-size: 13px; color: #444; }
@@ -164,8 +235,6 @@ function onLocaleChange(e: Event) {
 .is-off .sig-dot { background: #f5a623; box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.15); animation: sig-pulse 1.2s ease-in-out infinite; }
 @keyframes sig-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .sig-text { color: #333; }
-.sig-ip { margin-left: auto; font-size: 11px; color: #888; font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sig-room { color: #aaa; }
 .sig-reconnect {
   margin-left: auto;
   font: inherit;

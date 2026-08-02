@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router';
 import type { PrintLayout } from 'shared';
 import PrintSheet from '../components/PrintSheet.vue';
 import { network, requestContent } from '../stores/network';
+import { formatId } from '../stores/identity';
 import { useI18n } from 'vue-i18n';
 import { peerStateLabel } from '../i18n';
 
@@ -42,7 +43,7 @@ function doPrint() {
   <div class="editor">
     <div class="toolbar no-print">
       <button type="button" class="btn" @click="router.back()">{{ t('common.back') }}</button>
-      <span class="toolbar-title">{{ t('peer.deviceTitle', { id }) }}</span>
+      <span class="toolbar-title">{{ t('peer.deviceTitle', { id: formatId(id) }) }}</span>
       <span class="peer-state">{{ t('home.channel') }}:{{ peerStateLabel_ }}</span>
       <button v-if="peerContent" type="button" class="btn btn-primary" @click="doPrint">{{ t('common.print') }}</button>
     </div>

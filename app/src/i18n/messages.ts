@@ -8,6 +8,8 @@ export interface Messages {
     save: string;
     saved: string;
     edit: string;
+    copy: string;
+    copied: string;
   };
   home: {
     ownId: string;
@@ -26,6 +28,13 @@ export interface Messages {
     ping: string;
     latencyValue: string; // {ms}
     room: string;
+    networkInfo: string;
+    currentIp: string;
+    autoRoom: string;
+    currentRoom: string;
+    roomInput: string;
+    switchRoom: string;
+    resetAuto: string;
     landscape: string;
     portrait: string;
     fold: string;
