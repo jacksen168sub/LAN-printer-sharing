@@ -5,12 +5,16 @@ import { identity, getOwnContent } from './identity';
 
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:8787';
 
+// 消息缓冲上限:防止长会话内存只增不减
+const MAX_MESSAGES = 100;
+
 interface NetworkState {
   peers: PeerId[];
   signalingReady: boolean;
   messages: DcEnvelope[];
   peerStates: Record<string, 'connecting' | 'open' | 'closed'>;
   peerContents: Record<string, PeerContent>;
+  peerLatencies: Record<string, number>;
 }
 
 const state = reactive<NetworkState>({
@@ -19,6 +23,7 @@ const state = reactive<NetworkState>({
   messages: [],
   peerStates: {},
   peerContents: {},
+  peerLatencies: {},
 });
 
 let transport: WebRTCTransport | null = null;
@@ -34,10 +39,27 @@ export function startNetwork() {
   if (transport) return;
   transport = new WebRTCTransport(identity.id, SIGNALING_URL);
   transport.onPeersChange((peers) => {
+    const prev = state.peers;
     state.peers = peers;
+    // 离线 peer:清理缓存内容/状态/延迟,避免陈旧数据与内存增长
+    const removed = prev.filter((p) => !peers.includes(p));
+    if (removed.length) {
+      const nextContents = { ...state.peerContents };
+      const nextStates = { ...state.peerStates };
+      const nextLatencies = { ...state.peerLatencies };
+      for (const p of removed) {
+        delete nextContents[p];
+        delete nextStates[p];
+        delete nextLatencies[p];
+      }
+      state.peerContents = nextContents;
+      state.peerStates = nextStates;
+      state.peerLatencies = nextLatencies;
+    }
   });
   transport.onMessage((env) => {
     state.messages.push(env);
+    if (state.messages.length > MAX_MESSAGES) state.messages = state.messages.slice(-MAX_MESSAGES);
     if (env.type === 'content' && env.payload) {
       // 收到对方 PeerContent,缓存到 peerContents,PeerView 即可渲染
       state.peerContents = { ...state.peerContents, [env.from]: env.payload as PeerContent };
@@ -45,6 +67,15 @@ export function startNetwork() {
       // 对方主动请求,把自己的内容回推
       const own = getOwnContent();
       if (own) safeSend(env.from, 'content', own);
+    } else if (env.type === 'ping' && env.payload) {
+      // 收到 Ping:原样回 Pong(携带同一时间戳,对方据此算往返延迟)
+      safeSend(env.from, 'pong', env.payload);
+    } else if (env.type === 'pong' && env.payload) {
+      // 收到 Pong:按时间戳算往返延迟,缓存到 peerLatencies,首页 peer 卡片展示
+      const t = (env.payload as { t?: number }).t;
+      if (typeof t === 'number') {
+        state.peerLatencies = { ...state.peerLatencies, [env.from]: Date.now() - t };
+      }
     }
   });
   transport.onSignalingState((ready) => {
@@ -66,6 +97,14 @@ export function stopNetwork() {
   transport = null;
 }
 
+/** 重连信令:断开当前 transport 再重新建连(presence 会重新同步)。 */
+export function reconnectSignaling() {
+  stopNetwork();
+  // 重置信令就绪态,UI 立即反映"连接中"
+  state.signalingReady = false;
+  startNetwork();
+}
+
 export function sendToPeer(to: PeerId, type: DcEnvelope['type'], payload: unknown) {
   return transport?.send(to, type, payload);
 }
@@ -82,16 +121,22 @@ export function requestContent(peer: PeerId) {
   safeSend(peer, 'req-content', null);
 }
 
+/** Ping 对端:发 ping,对方回 pong 后 peerLatencies 即更新。 */
+export function pingPeer(to: PeerId) {
+  safeSend(to, 'ping', { from: identity.id, t: Date.now() });
+}
+
 export const network = readonly(state);
 
 // 调试钩子(仅开发期):便于用 browser_evaluate 直接发消息/读状态,绕开 UI 点击。
-if (typeof window !== 'undefined') {
+if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__lps = {
     get peers() { return state.peers; },
     get peerStates() { return state.peerStates; },
     get messages() { return [...state.messages]; },
     get peerContents() { return state.peerContents; },
-    ping: (to: PeerId) => sendToPeer(to, 'ping', { from: identity.id, t: Date.now() }),
+    get peerLatencies() { return state.peerLatencies; },
+    ping: (to: PeerId) => pingPeer(to),
     reqContent: (to: PeerId) => requestContent(to),
   };
 }

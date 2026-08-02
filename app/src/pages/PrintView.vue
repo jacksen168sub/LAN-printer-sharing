@@ -6,8 +6,10 @@ import { useRouter } from 'vue-router';
 import type { PrintLayout } from 'shared';
 import PrintSheet from '../components/PrintSheet.vue';
 import { getOwnContent } from '../stores/identity';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t } = useI18n();
 const own = getOwnContent();
 const content = computed(() => own?.content ?? null);
 const layout = computed(() => own?.layout ?? null);
@@ -33,14 +35,14 @@ function doPrint() {
 <template>
   <section v-if="own && content && layout">
     <div class="toolbar no-print">
-      <button type="button" class="btn" @click="router.back()">返回</button>
-      <button type="button" class="btn btn-primary" @click="doPrint">打印</button>
+      <button type="button" class="btn" @click="router.back()">{{ t('common.back') }}</button>
+      <button type="button" class="btn btn-primary" @click="doPrint">{{ t('common.print') }}</button>
     </div>
-    <div class="hint no-print">提示:打印对话框里选 A4、无边距、关闭页眉页脚。</div>
+    <div class="hint no-print">{{ t('print.hint') }}</div>
     <PrintSheet :content="content" :layout="layout" :auto-fit="true" />
   </section>
   <section v-else class="card no-print">
-    <p>尚未保存内容,<router-link to="/edit">去编辑</router-link>。</p>
+    <p>{{ t('print.empty') }}<router-link to="/edit">{{ t('print.goEdit') }}</router-link>.</p>
   </section>
 </template>
 

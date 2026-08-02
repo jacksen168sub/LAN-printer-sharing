@@ -7,6 +7,10 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
+// 生产环境静默,开发期保留 rtc 调试日志
+const dbg = import.meta.env.DEV;
+function log(...a: unknown[]) { if (dbg) console.log('[rtc]', ...a); }
+
 interface PeerConn {
   pc: RTCPeerConnection;
   dc: RTCDataChannel | null;
@@ -27,6 +31,8 @@ export class WebRTCTransport implements Transport {
   private sigStateCbs: Array<(ready: boolean) => void> = [];
   private stateCbs: Array<(peer: PeerId, state: 'connecting' | 'open' | 'closed') => void> = [];
   private knownPeers: PeerId[] = [];
+  // 每个 peer 的重连退避计数(成功 open 后清零),用于断线后指数退避重连
+  private reconnectDelay = new Map<PeerId, number>();
 
   constructor(self: PeerId, signalingUrl: string) {
     this.self = self;
@@ -99,7 +105,7 @@ export class WebRTCTransport implements Transport {
       this.wireDc(id, e.channel);
     };
     pc.onconnectionstatechange = () => {
-      console.log('[rtc]', id, 'conn:', pc.connectionState);
+      log(id, 'conn:', pc.connectionState);
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
         this.emitState(id, 'closed');
       }
@@ -110,16 +116,63 @@ export class WebRTCTransport implements Transport {
 
   private wireDc(peer: PeerId, dc: RTCDataChannel) {
     dc.onopen = () => {
-      console.log('[rtc]', peer, 'dc open');
+      log(peer, 'dc open');
+      // 连接成功,清零重连退避
+      this.reconnectDelay.delete(peer);
       this.emitState(peer, 'open');
     };
-    dc.onclose = () => this.emitState(peer, 'closed');
+    dc.onclose = () => {
+      log(peer, 'dc close');
+      this.emitState(peer, 'closed');
+      // 通道异常断开:若 peer 仍在 presence,清掉旧连接并按角色重新发起,避免永久断线
+      this.reconnectPeer(peer);
+    };
     dc.onmessage = (e) => {
       try {
         const env = JSON.parse(e.data) as DcEnvelope;
         this.msgCbs.forEach((cb) => cb(env));
       } catch { /* noop */ }
     };
+  }
+
+  /**
+   * 断线重连:立即清掉旧 PeerConn(确保后续新 offer 落到全新 PC),
+   * 仅由发起方(self < peer)在指数退避后重新 initiate;非发起方等待对端新 offer。
+   * peer 已离线(presence 移除)时不重连,由 handlePeers 负责清理。
+   */
+  private reconnectPeer(peer: PeerId) {
+    const existing = this.peers.get(peer);
+    if (existing) {
+      try { existing.pc.close(); } catch { /* noop */ }
+      this.peers.delete(peer);
+    }
+    if (!this.knownPeers.includes(peer)) return; // 已离线,放弃
+    if (!this.shouldInitiate(peer)) {
+      this.emitState(peer, 'connecting'); // 非发起方等待新 offer
+      return;
+    }
+    const attempt = (this.reconnectDelay.get(peer) ?? 0) + 1;
+    this.reconnectDelay.set(peer, attempt);
+    const delay = Math.min(1000 * 2 ** (attempt - 1), 30000); // 指数退避,上限 30s
+    log(peer, 'reconnect in', delay, 'ms (attempt', attempt, ')');
+    this.emitState(peer, 'connecting');
+    setTimeout(() => {
+      if (!this.knownPeers.includes(peer) || this.peers.has(peer)) return;
+      void this.initiate(peer);
+    }, delay);
+  }
+
+  /** 发起方:createDataChannel + offer。handlePeers 与 reconnectPeer 复用。 */
+  private async initiate(peer: PeerId) {
+    const p = this.ensurePeer(peer);
+    p.dc = p.pc.createDataChannel('main', { ordered: true });
+    this.wireDc(peer, p.dc);
+    log('initiate offer ->', peer);
+    try {
+      const offer = await p.pc.createOffer();
+      await p.pc.setLocalDescription(offer);
+      this.sig.sendSdp(peer, { type: 'offer', sdp: p.pc.localDescription!.sdp });
+    } catch { /* noop */ }
   }
 
   private emitPeers() {
@@ -135,22 +188,15 @@ export class WebRTCTransport implements Transport {
     for (const peer of next) {
       if (this.peers.has(peer)) continue;
       if (!this.shouldInitiate(peer)) continue;
-      const p = this.ensurePeer(peer);
-      p.dc = p.pc.createDataChannel('main', { ordered: true });
-      this.wireDc(peer, p.dc);
-      console.log('[rtc] initiate offer ->', peer);
-      try {
-        const offer = await p.pc.createOffer();
-        await p.pc.setLocalDescription(offer);
-        this.sig.sendSdp(peer, { type: 'offer', sdp: p.pc.localDescription!.sdp });
-      } catch { /* noop */ }
+      void this.initiate(peer);
     }
 
-    // 离线 peer:清理
+    // 离线 peer:清理 PC 与重连退避计数
     for (const id of [...this.peers.keys()]) {
       if (!next.includes(id)) {
         try { this.peers.get(id)!.pc.close(); } catch { /* noop */ }
         this.peers.delete(id);
+        this.reconnectDelay.delete(id);
       }
     }
   }

@@ -2,6 +2,7 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import { router } from './router';
 import { startNetwork } from './stores/network';
+import { i18n } from './i18n';
 import './styles/print.css';
 
 // @material/web 组件(按需,导入即注册 custom element)
@@ -13,5 +14,6 @@ import '@material/web/icon/icon.js';
 
 const app = createApp(App);
 app.use(router);
+app.use(i18n);
 app.mount('#app');
 startNetwork();

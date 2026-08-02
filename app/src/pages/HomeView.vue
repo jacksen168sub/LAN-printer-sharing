@@ -1,82 +1,112 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { identity } from '../stores/identity';
-import { network, sendToPeer } from '../stores/network';
-import { getOwnContent } from '../stores/identity';
+import { identity, getOwnContent } from '../stores/identity';
+import { network, pingPeer, reconnectSignaling } from '../stores/network';
 import { getTemplate } from '../templates/registry';
+import { useI18n } from 'vue-i18n';
+import { peerStateLabel, setLocale, type Locale } from '../i18n';
 
 const router = useRouter();
-const pingStatus = ref('');
+const { t, locale } = useI18n();
+const isDev = import.meta.env.DEV;
 
 const own = getOwnContent();
 const ownLabel = computed(() => (own ? getTemplate(own.content.type).label : null));
 const ownUpdated = computed(() => (own ? new Date(own.updatedAt).toLocaleString() : null));
 
-async function ping(peer: string) {
-  pingStatus.value = '发送中…';
-  for (let i = 0; i < 3; i++) {
-    try {
-      await sendToPeer(peer, 'ping', { from: identity.id, t: Date.now() });
-      pingStatus.value = '已发送 ✓(看对方是否收到)';
-      return;
-    } catch (e) {
-      if (i < 2) await new Promise((r) => setTimeout(r, 800));
-      else pingStatus.value = '通道未就绪:' + (e as Error).message;
-    }
-  }
+function ownOrientLabel(): string {
+  if (!own) return '';
+  return own.layout.orientation === 'landscape' ? t('home.landscape') : t('home.portrait')
+    + (own.layout.fold === 'half-long-edge' ? ' · ' + t('home.fold') : '');
+}
+
+/** peer 卡片背景:按通道状态着色。 */
+function peerBg(st: string | undefined): string {
+  if (st === 'open') return '#e8f5e9'; // 绿
+  if (st === 'connecting') return '#fff8e1'; // 琥珀
+  if (st === 'closed') return '#ffebee'; // 红
+  return '#fff';
+}
+
+function ping(p: string) {
+  pingPeer(p);
+}
+
+function onLocaleChange(e: Event) {
+  setLocale((e.target as HTMLSelectElement).value as Locale);
 }
 </script>
 
 <template>
   <section class="card">
-    <div class="label">本机 ID</div>
+    <div class="id-head">
+      <div class="label">{{ t('home.ownId') }}</div>
+      <select class="locale-select" :value="locale" @change="onLocaleChange" aria-label="Language">
+        <option value="zh-CN">中文</option>
+        <option value="en">EN</option>
+      </select>
+    </div>
     <div class="id">{{ identity.id }}</div>
   </section>
 
   <section class="card">
-    <div class="label">我的内容</div>
+    <div class="label">{{ t('home.myContent') }}</div>
     <template v-if="own">
       <div class="own-row">
         <span class="own-type">{{ ownLabel }}</span>
-        <span class="own-meta">{{ own.layout.orientation === 'landscape' ? '横向' : '纵向' }}<template v-if="own.layout.fold === 'half-long-edge'"> · 对折</template></span>
+        <span class="own-meta">{{ ownOrientLabel() }}</span>
         <span class="own-time">{{ ownUpdated }}</span>
       </div>
       <div class="actions">
-        <button type="button" class="btn" @click="router.push('/edit')">编辑</button>
-        <button type="button" class="btn btn-primary" @click="router.push('/print')">预览 / 打印</button>
+        <button type="button" class="btn" @click="router.push('/edit')">{{ t('common.edit') }}</button>
+        <button type="button" class="btn btn-primary" @click="router.push('/print')">{{ t('home.previewPrint') }}</button>
       </div>
     </template>
     <template v-else>
-      <div class="empty">尚未编辑内容</div>
+      <div class="empty">{{ t('home.noContent') }}</div>
       <div class="actions">
-        <button type="button" class="btn btn-primary" @click="router.push('/edit')">编辑我的内容</button>
+        <button type="button" class="btn btn-primary" @click="router.push('/edit')">{{ t('home.editMyContent') }}</button>
       </div>
     </template>
   </section>
 
-  <section class="card">
-    <div class="label">
-      在线设备({{ network.peers.length }})·
-      信令:{{ network.signalingReady ? '已连接' : '连接中…' }}
-    </div>
-    <md-list v-if="network.peers.length">
-      <md-list-item
-        v-for="p in network.peers"
-        :key="p"
-        @click="router.push('/peer/' + p)"
-      >
-        <div slot="headline">{{ p }}</div>
-        <div slot="supporting-text">通道:{{ network.peerStates[p] || '新建中' }}</div>
-        <button slot="end" type="button" class="btn" @click.stop="ping(p)">发测试消息</button>
-      </md-list-item>
-    </md-list>
-    <div v-else class="empty">暂无其他设备上线</div>
-    <div v-if="pingStatus" class="hint">{{ pingStatus }}</div>
+  <!-- 信令状态:紧凑状态条,左侧色条 + 呼吸圆点 + 右侧重连 -->
+  <section class="sig-bar" :class="network.signalingReady ? 'is-on' : 'is-off'">
+    <span class="sig-dot"></span>
+    <span class="sig-text">{{ t('home.signaling') }}:{{ network.signalingReady ? t('home.connected') : t('home.connecting') }}</span>
+    <button type="button" class="sig-reconnect" @click="reconnectSignaling">{{ t('home.reconnect') }}</button>
   </section>
 
-  <section class="card" v-if="network.messages.length">
-    <div class="label">收到的消息(实时)</div>
+  <section class="card">
+    <div class="label">{{ t('home.onlineDevices', { count: network.peers.length }) }}</div>
+    <div v-if="network.peers.length" class="peer-list">
+      <div
+        v-for="p in network.peers"
+        :key="p"
+        class="peer-card"
+        :style="{ background: peerBg(network.peerStates[p]) }"
+        @click="router.push('/peer/' + p)"
+      >
+        <div class="peer-head">
+          <span class="peer-id">{{ p }}</span>
+          <span class="peer-state">{{ t('home.channel') }}:{{ peerStateLabel(network.peerStates[p]) }}</span>
+        </div>
+        <div class="peer-foot">
+          <span class="peer-latency" v-if="network.peerLatencies[p] != null">
+            {{ t('home.latencyValue', { ms: network.peerLatencies[p] }) }}
+          </span>
+          <span class="peer-latency placeholder" v-else>—</span>
+          <button type="button" class="btn peer-ping" @click.stop="ping(p)">{{ t('home.ping') }}</button>
+        </div>
+      </div>
+    </div>
+    <div v-else class="empty">{{ t('home.noPeers') }}</div>
+  </section>
+
+  <!-- 调试面板:仅开发期 -->
+  <section class="card" v-if="isDev && network.messages.length">
+    <div class="label">{{ t('home.messagesDebug') }}</div>
     <pre>{{ network.messages.slice(-5).map(m => m.from + ': ' + JSON.stringify(m.payload)).join('\n') }}</pre>
   </section>
 </template>
@@ -97,12 +127,73 @@ async function ping(peer: string) {
   font-family: ui-monospace, monospace;
   color: #005ac1;
 }
+.id-head { display: flex; justify-content: space-between; align-items: center; }
+.locale-select {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+}
 .own-row { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: baseline; }
 .own-type { font-weight: 600; }
 .own-meta { font-size: 13px; color: #444; }
 .own-time { font-size: 12px; color: #999; }
 .actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
 .empty { color: #999; padding: 12px 0; }
-.hint { font-size: 12px; color: #888; margin-top: 8px; }
+
+/* 信令状态条:紧凑、连接中圆点呼吸 */
+.sig-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 13px;
+}
+.sig-bar.is-on { background: #f6fbf7; }
+.sig-bar.is-off { background: #fffbf2; }
+.sig-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.is-on .sig-dot { background: #34a853; box-shadow: 0 0 0 3px rgba(52, 168, 83, 0.15); }
+.is-off .sig-dot { background: #f5a623; box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.15); animation: sig-pulse 1.2s ease-in-out infinite; }
+@keyframes sig-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.sig-text { color: #333; }
+.sig-reconnect {
+  margin-left: auto;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.sig-reconnect:hover { background: rgba(0, 0, 0, 0.05); }
+
+/* peer 列表 */
+.peer-list { display: flex; flex-direction: column; gap: 8px; }
+.peer-card {
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  border: 1px solid rgba(0,0,0,0.06);
+  transition: background 0.15s;
+}
+.peer-card:hover { filter: brightness(0.98); }
+.peer-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.peer-id { font-family: ui-monospace, monospace; font-weight: 700; font-size: 16px; }
+.peer-state { font-size: 12px; color: #555; }
+.peer-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.peer-latency { font-size: 12px; color: #444; }
+.peer-latency.placeholder { color: #bbb; }
+.peer-ping { padding: 4px 12px; font-size: 13px; }
+
 pre { background: #f5f5f5; padding: 8px; border-radius: 6px; font-size: 12px; overflow: auto; margin: 0; }
 </style>

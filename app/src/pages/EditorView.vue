@@ -9,8 +9,10 @@ import { broadcastContent } from '../stores/network';
 import { computeGoldenFontSize } from '../lib/auto-font';
 import { TEMPLATES, defaultContent, defaultLayout, getTemplate } from '../templates/registry';
 import PrintSheet from '../components/PrintSheet.vue';
+import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
+const { t } = useI18n();
 
 const own = getOwnContent();
 const content = ref<Content>(own?.content ?? defaultContent('contact'));
@@ -88,55 +90,55 @@ function saveAndPrint() {
 <template>
   <div class="editor">
     <div class="toolbar no-print">
-      <button type="button" class="btn" @click="router.back()">返回</button>
-      <span class="toolbar-title">编辑</span>
+      <button type="button" class="btn" @click="router.back()">{{ t('common.back') }}</button>
+      <span class="toolbar-title">{{ t('editor.title') }}</span>
     </div>
     <div class="edit-grid">
     <section class="card edit-form no-print">
-      <div class="label">内容类型</div>
+      <div class="label">{{ t('editor.contentType') }}</div>
       <div class="seg type-seg">
         <button
-          v-for="t in (Object.keys(TEMPLATES) as ContentType[])"
-          :key="t"
+          v-for="ct in (Object.keys(TEMPLATES) as ContentType[])"
+          :key="ct"
           type="button"
-          :class="{ active: contentType === t }"
-          @click="switchType(t)"
-        >{{ TEMPLATES[t].label }}</button>
+          :class="{ active: contentType === ct }"
+          @click="switchType(ct)"
+        >{{ TEMPLATES[ct].label }}</button>
       </div>
 
       <component :is="editor" :model-value="content" @update:model-value="content = $event" />
 
-      <div class="label layout-label">布局</div>
+      <div class="label layout-label">{{ t('editor.layout') }}</div>
       <div class="layout-row">
         <div class="control">
-          <span class="control-label">方向</span>
+          <span class="control-label">{{ t('editor.orientation') }}</span>
           <div class="seg">
-            <button type="button" :class="{ active: layout.orientation === 'landscape' }" :disabled="layout.fold === 'half-long-edge'" @click="setOrientation('landscape')">横向</button>
-            <button type="button" :class="{ active: layout.orientation === 'portrait' }" :disabled="layout.fold === 'half-long-edge'" @click="setOrientation('portrait')">纵向</button>
+            <button type="button" :class="{ active: layout.orientation === 'landscape' }" :disabled="layout.fold === 'half-long-edge'" @click="setOrientation('landscape')">{{ t('editor.landscape') }}</button>
+            <button type="button" :class="{ active: layout.orientation === 'portrait' }" :disabled="layout.fold === 'half-long-edge'" @click="setOrientation('portrait')">{{ t('editor.portrait') }}</button>
           </div>
         </div>
         <div class="control">
-          <span class="control-label">折叠</span>
+          <span class="control-label">{{ t('editor.fold') }}</span>
           <div class="seg">
-            <button type="button" :class="{ active: layout.fold === 'none' }" @click="setFold('none')">不折叠</button>
-            <button type="button" :class="{ active: layout.fold === 'half-long-edge' }" @click="setFold('half-long-edge')">对折→A5</button>
+            <button type="button" :class="{ active: layout.fold === 'none' }" @click="setFold('none')">{{ t('editor.noFold') }}</button>
+            <button type="button" :class="{ active: layout.fold === 'half-long-edge' }" @click="setFold('half-long-edge')">{{ t('editor.foldToA5') }}</button>
           </div>
         </div>
         <div class="control">
-          <span class="control-label">字号</span>
-          <button type="button" class="btn" @click="applyAutoFontSize" title="按最长行 × 纸宽黄金分割自适应">自适应</button>
+          <span class="control-label">{{ t('editor.fontSize') }}</span>
+          <button type="button" class="btn" @click="applyAutoFontSize" :title="t('editor.autoFitTitle')">{{ t('editor.autoFit') }}</button>
         </div>
       </div>
-      <div class="hint" v-if="layout.fold === 'half-long-edge'">对折模式:A4 纵向,内容只印上半 A5 区域,下半留白折叠到背面。</div>
+      <div class="hint" v-if="layout.fold === 'half-long-edge'">{{ t('editor.foldHint') }}</div>
 
       <div class="actions">
-        <button type="button" class="btn btn-primary" @click="save">{{ saved ? '已保存 ✓' : '保存' }}</button>
-        <button type="button" class="btn" @click="saveAndPrint">打印</button>
+        <button type="button" class="btn btn-primary" @click="save">{{ saved ? t('common.saved') : t('common.save') }}</button>
+        <button type="button" class="btn" @click="saveAndPrint">{{ t('common.print') }}</button>
       </div>
     </section>
 
     <section class="card edit-preview no-print">
-      <div class="label">预览(所见即所打)</div>
+      <div class="label">{{ t('editor.preview') }}</div>
       <PrintSheet :content="content" :layout="layout" :auto-fit="true" />
     </section>
     </div>

@@ -12,9 +12,11 @@ function genId(): string {
 }
 
 function loadId(): string {
-  // 测试用:?id=xxxx 可覆盖本机 ID(不写 localStorage,便于同机多标签互测)
-  const override = new URLSearchParams(location.search).get('id');
-  if (override) return override;
+  // 开发期:?id=xxxx 可覆盖本机 ID(不写 localStorage,便于同机多标签互测)。生产环境不生效。
+  if (import.meta.env.DEV) {
+    const override = new URLSearchParams(location.search).get('id');
+    if (override) return override;
+  }
   let id = localStorage.getItem(ID_KEY);
   if (!id) {
     id = genId();

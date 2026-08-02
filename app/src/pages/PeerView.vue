@@ -6,12 +6,15 @@ import { useRouter } from 'vue-router';
 import type { PrintLayout } from 'shared';
 import PrintSheet from '../components/PrintSheet.vue';
 import { network, requestContent } from '../stores/network';
+import { useI18n } from 'vue-i18n';
+import { peerStateLabel } from '../i18n';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
+const { t } = useI18n();
 
 const peerContent = computed(() => network.peerContents[props.id] ?? null);
-const peerState = computed(() => network.peerStates[props.id] || '未知');
+const peerStateLabel_ = computed(() => peerStateLabel(network.peerStates[props.id]));
 
 onMounted(() => {
   // 主动拉一次:补 push-on-connect 漏掉的情形(如先连后改内容、或本次会话尚未推送)
@@ -38,10 +41,10 @@ function doPrint() {
 <template>
   <div class="editor">
     <div class="toolbar no-print">
-      <button type="button" class="btn" @click="router.back()">返回</button>
-      <span class="toolbar-title">设备 {{ id }}</span>
-      <span class="peer-state">通道:{{ peerState }}</span>
-      <button v-if="peerContent" type="button" class="btn btn-primary" @click="doPrint">打印</button>
+      <button type="button" class="btn" @click="router.back()">{{ t('common.back') }}</button>
+      <span class="toolbar-title">{{ t('peer.deviceTitle', { id }) }}</span>
+      <span class="peer-state">{{ t('home.channel') }}:{{ peerStateLabel_ }}</span>
+      <button v-if="peerContent" type="button" class="btn btn-primary" @click="doPrint">{{ t('common.print') }}</button>
     </div>
 
     <div v-if="peerContent" class="sheet-area">
@@ -49,8 +52,8 @@ function doPrint() {
     </div>
 
     <section v-else class="card no-print">
-      <div class="empty">尚未收到该设备的内容…</div>
-      <div class="hint">通道状态:{{ peerState }}。若长时间无内容,请确认对方已编辑并保存,且双方都在同一局域网、信令已连接。</div>
+      <div class="empty">{{ t('peer.waitingContent') }}</div>
+      <div class="hint">{{ t('home.channel') }}: {{ peerStateLabel_ }}. {{ t('peer.waitingHint') }}</div>
     </section>
   </div>
 </template>
