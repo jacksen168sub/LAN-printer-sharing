@@ -128,7 +128,7 @@ function copyId() {
         @click="router.push('/peer/' + p)"
       >
         <div class="peer-head">
-          <Tip :text="formatId(p)"><span class="peer-id">{{ shortId(p) }}…</span></Tip>
+          <Tip :text="formatId(p)"><span class="peer-id">{{ shortId(p) }}</span></Tip>
           <span class="peer-state">{{ t('home.channel') }}:{{ peerStateLabel(network.peerStates[p]) }}</span>
         </div>
         <div class="peer-foot">
