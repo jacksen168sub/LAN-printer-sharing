@@ -22,7 +22,7 @@
 
 ## 1. 信令 Worker:Workers Builds 连 GitHub
 
-Worker 配置见 [worker/wrangler.toml](worker/wrangler.toml):name = `lan-printer-signaling`,含一个 Durable Object `Room`(首次部署自动建迁移)。
+Worker 配置见 [worker/wrangler.toml](worker/wrangler.toml):name = `lan-printer-sharing`,含一个 Durable Object `Room`(首次部署自动建迁移)。
 
 > 本项目是 pnpm monorepo,worker 在 `worker/` 子目录、且 `worker/package.json` 依赖 `shared` workspace。`shared` 在 [room.ts:1](worker/src/room.ts#L1) 是 `import type`(打包时擦除),但 `pnpm install` 仍需在仓库根执行以链接 workspace。所以 **Root directory 设为项目根**,deploy 命令用 `--config` 指向 worker 的 toml。
 
@@ -50,16 +50,16 @@ Worker 配置见 [worker/wrangler.toml](worker/wrangler.toml):name = `lan-printe
 部署成功后,在 Worker 详情页看到地址:
 
 ```
-https://lan-printer-signaling.<你的子域>.workers.dev
+https://lan-printer-sharing.<你的子域>.workers.dev
 ```
 
 对应信令 URL(把 `https` 换 `wss`):
 
 ```
-wss://lan-printer-signaling.<你的子域>.workers.dev
+wss://lan-printer-sharing.<你的子域>.workers.dev
 ```
 
-验证:浏览器开 `https://lan-printer-signaling.<你的子域>.workers.dev/health`,返回 `ok` 即正常。
+验证:浏览器开 `https://lan-printer-sharing.<你的子域>.workers.dev/health`,返回 `ok` 即正常。
 
 ---
 
@@ -85,7 +85,7 @@ wss://lan-printer-signaling.<你的子域>.workers.dev
 
 | 变量 | 值 |
 |------|-----|
-| `VITE_SIGNALING_URL` | `wss://lan-printer-signaling.<你的子域>.workers.dev`(第 1 步拿到) |
+| `VITE_SIGNALING_URL` | `wss://lan-printer-sharing.<你的子域>.workers.dev`(第 1 步拿到) |
 | `NODE_VERSION` | `20` |
 
 > ⚠️ `VITE_SIGNALING_URL` 必须设。[network.ts](app/src/stores/network.ts#L7) 读它;不设则默认 `ws://localhost:8787`,线上 HTTPS 页面会拦截,信令连不上、PeerView 永远收不到内容。
@@ -152,7 +152,7 @@ __lps.reqContent('xxxx') // 主动拉取某 peer 内容
 ## 6. 可选:自定义域名
 
 - **Pages**:Dashboard → 选 `lan-printer` → Custom domains → 绑定(自动签证书)
-- **Worker**:Dashboard → 选 `lan-printer-signaling` → Triggers → Custom Domains
+- **Worker**:Dashboard → 选 `lan-printer-sharing` → Triggers → Custom Domains
 - 绑域后,把 Pages 环境变量 `VITE_SIGNALING_URL` 改成新的 `wss://你的域名`,触发一次新部署即可
 
 ---
