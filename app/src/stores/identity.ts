@@ -46,6 +46,11 @@ export function formatId(id: string): string {
     : id;
 }
 
+/** 短显示:前 8 位 hex(8 hex = 32 位,peer 间肉眼区分足够)。完整 ID 通过 title 悬停查看。 */
+export function shortId(id: string): string {
+  return id.slice(0, 8);
+}
+
 export function getOwnContent(): PeerContent | null {
   const raw = localStorage.getItem(CONTENT_KEY);
   if (!raw) return null;

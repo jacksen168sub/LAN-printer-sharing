@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { identity, getOwnContent, formatId } from '../stores/identity';
+import { identity, getOwnContent, formatId, shortId } from '../stores/identity';
 import { network, pingPeer, reconnectSignaling, setRoom, getManualRoom } from '../stores/network';
 import { getTemplate } from '../templates/registry';
 import { useI18n } from 'vue-i18n';
 import { peerStateLabel, setLocale, type Locale } from '../i18n';
+import Tip from '../components/Tip.vue';
 
 const router = useRouter();
 const { t, locale } = useI18n();
@@ -72,7 +73,7 @@ function copyId() {
         </select>
       </div>
     </div>
-    <div class="id-long">{{ idDisplay }}</div>
+    <Tip :text="idDisplay"><span class="id-long">{{ shortId(identity.id) }}</span></Tip>
   </section>
 
   <section class="card">
@@ -127,7 +128,7 @@ function copyId() {
         @click="router.push('/peer/' + p)"
       >
         <div class="peer-head">
-          <span class="peer-id">{{ formatId(p) }}</span>
+          <Tip :text="formatId(p)"><span class="peer-id">{{ shortId(p) }}…</span></Tip>
           <span class="peer-state">{{ t('home.channel') }}:{{ peerStateLabel(network.peerStates[p]) }}</span>
         </div>
         <div class="peer-foot">
@@ -159,13 +160,12 @@ function copyId() {
 }
 .label { font-size: 12px; color: #666; margin-bottom: 6px; }
 .id-long {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
   letter-spacing: 1px;
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   color: #005ac1;
-  overflow-wrap: anywhere;
-  line-height: 1.5;
+  cursor: help;
 }
 .id-head { display: flex; justify-content: space-between; align-items: center; }
 .id-actions { display: flex; gap: 6px; align-items: center; }
@@ -260,7 +260,7 @@ function copyId() {
 }
 .peer-card:hover { filter: brightness(0.98); }
 .peer-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.peer-id { font-family: ui-monospace, monospace; font-weight: 700; font-size: 16px; }
+.peer-id { font-family: ui-monospace, monospace; font-weight: 700; font-size: 16px; cursor: help; }
 .peer-state { font-size: 12px; color: #555; }
 .peer-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
 .peer-latency { font-size: 12px; color: #444; }
