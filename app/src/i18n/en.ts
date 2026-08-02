@@ -25,6 +25,7 @@ export const en: Messages = {
     channel: 'Channel',
     ping: 'Ping',
     latencyValue: 'Latency: {ms}ms',
+    room: 'Room',
     landscape: 'Landscape',
     portrait: 'Portrait',
     fold: 'Fold',

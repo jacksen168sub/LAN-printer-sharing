@@ -2,10 +2,8 @@ name = "lan-printer-sharing"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 
-# 房间隔离模式:global=全员同房;by-ip=按公网 IP 分房(同 NAT/LAN 归一间,默认)
-# 可被 Dashboard 环境变量覆盖
-[vars]
-ROOM_MODE = "by-ip"
+# 房间:按公网 IP 归一化分房(IPv6 取 /64 前缀,IPv4 取完整地址),同 LAN 归一间。
+# 前端可用 ?room=CODE 显式指定分组覆盖。
 
 # 单一房间 DO:维护在线 peer 集合 + 中转 SDP/ICE(纯转发,不存业务数据)
 [[durable_objects.bindings]]

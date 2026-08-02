@@ -25,6 +25,7 @@ export interface Messages {
     channel: string;
     ping: string;
     latencyValue: string; // {ms}
+    room: string;
     landscape: string;
     portrait: string;
     fold: string;

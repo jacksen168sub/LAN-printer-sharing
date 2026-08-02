@@ -42,7 +42,7 @@ Worker 配置见 [worker/wrangler.toml](worker/wrangler.toml):name = `lan-printe
 4. Save and Deploy
 
 > - `--config worker/wrangler.toml` 让 wrangler 用 worker 的配置;toml 里的 `main = "src/index.ts"` 相对 toml 解析为 `worker/src/index.ts`。
-> - 首次部署会自动执行 Durable Object 迁移(`new_classes = ["Room"]`)。
+> - 首次部署会自动执行 Durable Object 迁移(`new_sqlite_classes = ["Room"]`,免费计划要求 SQLite 后端)。
 > - Worker 无需环境变量(纯转发信令,不存业务数据)。
 
 ### 拿到信令地址

@@ -25,6 +25,7 @@ export const zhCN: Messages = {
     channel: '通道',
     ping: 'Ping',
     latencyValue: '延迟:{ms}ms',
+    room: '房间',
     landscape: '横向',
     portrait: '纵向',
     fold: '对折',

@@ -4,6 +4,8 @@ import { WebRTCTransport } from '../transport/WebRTCTransport';
 import { identity, getOwnContent } from './identity';
 
 const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || 'ws://localhost:8787';
+// ws/wss → http/https,用于 fetch /ip(CF 返回的公网 IP 即分房依据,权威)
+const SIGNALING_HTTP = SIGNALING_URL.replace(/^ws/, 'http');
 
 // 消息缓冲上限:防止长会话内存只增不减
 const MAX_MESSAGES = 100;
@@ -15,6 +17,8 @@ interface NetworkState {
   peerStates: Record<string, 'connecting' | 'open' | 'closed'>;
   peerContents: Record<string, PeerContent>;
   peerLatencies: Record<string, number>;
+  myIp: string | null;
+  myRoom: string | null;
 }
 
 const state = reactive<NetworkState>({
@@ -24,6 +28,8 @@ const state = reactive<NetworkState>({
   peerStates: {},
   peerContents: {},
   peerLatencies: {},
+  myIp: null,
+  myRoom: null,
 });
 
 let transport: WebRTCTransport | null = null;
@@ -90,6 +96,15 @@ export function startNetwork() {
     }
   });
   void transport.connect();
+
+  // 拉取本机公网 IP + 房间键(CF 返回,即分房依据),信令卡片展示用
+  fetch(`${SIGNALING_HTTP}/ip`)
+    .then((r) => r.json())
+    .then((d: { ip?: string; room?: string }) => {
+      state.myIp = d.ip ?? null;
+      state.myRoom = d.room ?? null;
+    })
+    .catch(() => { /* 网络异常忽略,卡片显示 — */ });
 }
 
 export function stopNetwork() {

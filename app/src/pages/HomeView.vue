@@ -71,10 +71,11 @@ function onLocaleChange(e: Event) {
     </template>
   </section>
 
-  <!-- 信令状态:紧凑状态条,左侧色条 + 呼吸圆点 + 右侧重连 -->
+  <!-- 信令状态:紧凑状态条 + 呼吸圆点 + IP/房间 + 右侧重连 -->
   <section class="sig-bar" :class="network.signalingReady ? 'is-on' : 'is-off'">
     <span class="sig-dot"></span>
     <span class="sig-text">{{ t('home.signaling') }}:{{ network.signalingReady ? t('home.connected') : t('home.connecting') }}</span>
+    <span class="sig-ip" v-if="network.myIp">IP {{ network.myIp }}<span class="sig-room" v-if="network.myRoom"> · {{ t('home.room') }} {{ network.myRoom }}</span></span>
     <button type="button" class="sig-reconnect" @click="reconnectSignaling">{{ t('home.reconnect') }}</button>
   </section>
 
@@ -163,6 +164,8 @@ function onLocaleChange(e: Event) {
 .is-off .sig-dot { background: #f5a623; box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.15); animation: sig-pulse 1.2s ease-in-out infinite; }
 @keyframes sig-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .sig-text { color: #333; }
+.sig-ip { margin-left: auto; font-size: 11px; color: #888; font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sig-room { color: #aaa; }
 .sig-reconnect {
   margin-left: auto;
   font: inherit;
