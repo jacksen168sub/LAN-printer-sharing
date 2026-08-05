@@ -54,6 +54,7 @@ export const zhCN: Messages = {
     fieldLocation: '地点',
     fieldPhone: '电话',
     fieldContact: '联系人',
+    fieldImage: '图片',
     emptyText: '(空)',
   },
   editor: {
@@ -71,6 +72,13 @@ export const zhCN: Messages = {
     autoFitTitle: '按最长行 × 纸宽黄金分割自适应',
     foldHint: '对折模式:A4 纵向,内容只印上半 A5 区域,下半留白折叠到背面。',
     preview: '预览(所见即所打)',
+    uploadImage: '上传图片',
+    imageHint: '支持 JPG / PNG / WebP,单张上限 20MB',
+    imageTooLarge: '图片过大(上限 {max}MB)',
+    imageBadType: '不支持的图片格式',
+    imageReadFail: '图片读取失败',
+    imageLoading: '读取中…',
+    clearImage: '清除',
   },
   print: {
     hint: '提示:打印对话框里选 A4、无边距、关闭页眉页脚。',

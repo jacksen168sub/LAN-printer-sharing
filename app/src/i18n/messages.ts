@@ -54,6 +54,7 @@ export interface Messages {
     fieldLocation: string;
     fieldPhone: string;
     fieldContact: string;
+    fieldImage: string;
     emptyText: string;
   };
   editor: {
@@ -71,6 +72,13 @@ export interface Messages {
     autoFitTitle: string;
     foldHint: string;
     preview: string;
+    uploadImage: string;
+    imageHint: string;
+    imageTooLarge: string; // {max}
+    imageBadType: string;
+    imageReadFail: string;
+    imageLoading: string;
+    clearImage: string;
   };
   print: {
     hint: string;

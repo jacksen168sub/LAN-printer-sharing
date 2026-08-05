@@ -60,6 +60,32 @@ function safeSend(to: PeerId, type: DcEnvelope['type'], payload: unknown) {
   } catch { /* noop */ }
 }
 
+/** dataURL → Uint8Array:用 fetch 解码 base64,比 atob 高效且不阻塞主线程。 */
+async function dataUrlToBytes(dataUrl: string): Promise<Uint8Array> {
+  const res = await fetch(dataUrl);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+/**
+ * 发送内容:图片(dataUrl 为 dataURL)走 元数据 JSON + sendBlob 二进制分块;
+ * 文本类 / 已填充 blobURL 的图片 直接发 content JSON。
+ */
+function sendContent(to: PeerId, pc: PeerContent) {
+  if (pc.content.type === 'image' && pc.content.dataUrl.startsWith('data:')) {
+    const transferId = crypto.getRandomValues(new Uint32Array(1))[0];
+    const meta: PeerContent = {
+      ...pc,
+      content: { ...pc.content, dataUrl: '', transferId },
+    };
+    safeSend(to, 'content', meta);
+    void dataUrlToBytes(pc.content.dataUrl).then((bytes) => {
+      transport?.sendBlob(to, transferId, bytes)?.catch(() => { /* noop */ });
+    });
+  } else {
+    safeSend(to, 'content', pc);
+  }
+}
+
 export function startNetwork() {
   if (transport) return;
   transport = new WebRTCTransport(identity.id, buildSignalingUrl());
@@ -73,6 +99,11 @@ export function startNetwork() {
       const nextStates = { ...state.peerStates };
       const nextLatencies = { ...state.peerLatencies };
       for (const p of removed) {
+        // revoke peer 图片的 blob URL,防内存泄漏
+        const pc = nextContents[p];
+        if (pc?.content.type === 'image' && pc.content.dataUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(pc.content.dataUrl);
+        }
         delete nextContents[p];
         delete nextStates[p];
         delete nextLatencies[p];
@@ -89,9 +120,9 @@ export function startNetwork() {
       // 收到对方 PeerContent,缓存到 peerContents,PeerView 即可渲染
       state.peerContents = { ...state.peerContents, [env.from]: env.payload as PeerContent };
     } else if (env.type === 'req-content') {
-      // 对方主动请求,把自己的内容回推
+      // 对方主动请求,把自己的内容回推(图片走二进制分块)
       const own = getOwnContent();
-      if (own) safeSend(env.from, 'content', own);
+      if (own) sendContent(env.from, own);
     } else if (env.type === 'ping' && env.payload) {
       // 收到 Ping:原样回 Pong(携带同一时间戳,对方据此算往返延迟)
       safeSend(env.from, 'pong', env.payload);
@@ -103,6 +134,18 @@ export function startNetwork() {
       }
     }
   });
+  transport.onBlob((from, transferId, blob) => {
+    // 二进制分块收齐:组装 blob URL 填回 peerContent,PeerView 即可渲染
+    const pc = state.peerContents[from];
+    if (!pc || pc.content.type !== 'image' || pc.content.transferId !== transferId) return;
+    const oldUrl = pc.content.dataUrl;
+    if (oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+    const url = URL.createObjectURL(blob);
+    state.peerContents = {
+      ...state.peerContents,
+      [from]: { ...pc, content: { ...pc.content, dataUrl: url, transferId: undefined } },
+    };
+  });
   transport.onSignalingState((ready) => {
     state.signalingReady = ready;
   });
@@ -111,7 +154,7 @@ export function startNetwork() {
     // 通道一通就把自己内容推过去,对方进 PeerView 即有内容可渲染
     if (st === 'open') {
       const own = getOwnContent();
-      if (own) safeSend(peer, 'content', own);
+      if (own) sendContent(peer, own);
       // 自动 ping 一次:1 秒内填上延迟,避免 peer 卡片平时留空 "—"
       // 双向连接时两端都会各自 ping,各自测自己的 RTT,互不干扰
       pingPeer(peer);
@@ -162,7 +205,7 @@ export function sendToPeer(to: PeerId, type: DcEnvelope['type'], payload: unknow
 /** 保存后广播:让所有在线对端看到最新内容。 */
 export function broadcastContent(c: PeerContent) {
   for (const peer of state.peers) {
-    safeSend(peer, 'content', c);
+    sendContent(peer, c);
   }
 }
 

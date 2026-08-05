@@ -7,6 +7,13 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun1.l.google.com:19302' },
 ];
 
+// 二进制分块传输(仿 LocalSend):16KB/块,bufferedAmount 超 1MB 让出事件循环
+const CHUNK_SIZE = 16 * 1024;
+const MAX_BUFFERED_AMOUNT = 1 * 1024 * 1024;
+const CHUNK_HEADER = 12; // uint32 transferId + uint32 seq + uint32 total
+const CHUNK_GC_INTERVAL = 30_000; // 30s 清理超时缓冲
+const CHUNK_GC_MAX_AGE = 60_000;  // 60s 未完成的传输视为废弃
+
 // 生产环境静默,开发期保留 rtc 调试日志
 const dbg = import.meta.env.DEV;
 function log(...a: unknown[]) { if (dbg) console.log('[rtc]', ...a); }
@@ -16,6 +23,14 @@ interface PeerConn {
   dc: RTCDataChannel | null;
   pendingIce: IceCandidateInit[];
   remoteDescSet: boolean;
+}
+
+/** 二进制分块接收缓冲:按 transferId 收齐后组装 Blob。 */
+interface ChunkBuf {
+  total: number;
+  parts: ArrayBuffer[];
+  received: number;
+  ts: number; // 最近更新时间,用于 GC
 }
 
 /**
@@ -33,6 +48,10 @@ export class WebRTCTransport implements Transport {
   private knownPeers: PeerId[] = [];
   // 每个 peer 的重连退避计数(成功 open 后清零),用于断线后指数退避重连
   private reconnectDelay = new Map<PeerId, number>();
+  // 二进制分块缓冲:peer → (transferId → ChunkBuf)
+  private chunkBufs = new Map<PeerId, Map<number, ChunkBuf>>();
+  private blobCbs: Array<(from: PeerId, transferId: number, blob: Blob) => void> = [];
+  private chunkGcTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(self: PeerId, signalingUrl: string) {
     this.self = self;
@@ -43,6 +62,8 @@ export class WebRTCTransport implements Transport {
       onSdp: (from, sdp) => { void this.handleSdp(from, sdp); },
       onIce: (from, candidate) => { void this.handleIce(from, candidate); },
     });
+    // 定时清理超时的分块缓冲,防对端崩溃未发完导致内存泄漏
+    this.chunkGcTimer = setInterval(() => this.gcChunkBufs(), CHUNK_GC_INTERVAL);
   }
 
   async connect() {
@@ -50,10 +71,12 @@ export class WebRTCTransport implements Transport {
   }
 
   disconnect() {
+    if (this.chunkGcTimer) { clearInterval(this.chunkGcTimer); this.chunkGcTimer = null; }
     for (const p of this.peers.values()) {
       try { p.pc.close(); } catch { /* noop */ }
     }
     this.peers.clear();
+    this.chunkBufs.clear();
     this.sig.close();
   }
 
@@ -64,6 +87,10 @@ export class WebRTCTransport implements Transport {
 
   onMessage(cb: (env: DcEnvelope) => void) {
     this.msgCbs.push(cb);
+  }
+
+  onBlob(cb: (from: PeerId, transferId: number, blob: Blob) => void) {
+    this.blobCbs.push(cb);
   }
 
   onSignalingState(cb: (ready: boolean) => void) {
@@ -85,6 +112,33 @@ export class WebRTCTransport implements Transport {
     }
     const env: DcEnvelope = { from: this.self, type, payload };
     p.dc.send(JSON.stringify(env));
+  }
+
+  /**
+   * 二进制分块发送:帧头 [transferId 4B][seq 4B][total 4B] + data 16KB。
+   * bufferedAmount 超 1MB 时让出事件循环,避免内存堆积。仿 LocalSend。
+   */
+  async sendBlob(to: PeerId, transferId: number, bytes: Uint8Array) {
+    const p = this.peers.get(to);
+    if (!p?.dc || p.dc.readyState !== 'open') {
+      throw new Error(`datachannel not open: ${to}`);
+    }
+    const total = Math.ceil(bytes.length / CHUNK_SIZE);
+    for (let i = 0; i < total; i++) {
+      const offset = i * CHUNK_SIZE;
+      const end = Math.min(offset + CHUNK_SIZE, bytes.length);
+      const frame = new ArrayBuffer(CHUNK_HEADER + (end - offset));
+      const dv = new DataView(frame);
+      dv.setUint32(0, transferId);
+      dv.setUint32(4, i);
+      dv.setUint32(8, total);
+      new Uint8Array(frame, CHUNK_HEADER).set(bytes.subarray(offset, end));
+      p.dc.send(frame);
+      // 背压:缓冲超阈值时让出,等缓冲排空
+      if (p.dc.bufferedAmount > MAX_BUFFERED_AMOUNT) {
+        await new Promise<void>((r) => setTimeout(r, 10));
+      }
+    }
   }
 
   private shouldInitiate(peer: PeerId) {
@@ -123,16 +177,57 @@ export class WebRTCTransport implements Transport {
     };
     dc.onclose = () => {
       log(peer, 'dc close');
+      this.chunkBufs.delete(peer); // 清残留分块缓冲
       this.emitState(peer, 'closed');
       // 通道异常断开:若 peer 仍在 presence,清掉旧连接并按角色重新发起,避免永久断线
       this.reconnectPeer(peer);
     };
     dc.onmessage = (e) => {
-      try {
-        const env = JSON.parse(e.data) as DcEnvelope;
-        this.msgCbs.forEach((cb) => cb(env));
-      } catch { /* noop */ }
+      // string → JSON 控制消息;ArrayBuffer → 二进制分块
+      if (typeof e.data === 'string') {
+        try {
+          const env = JSON.parse(e.data) as DcEnvelope;
+          this.msgCbs.forEach((cb) => cb(env));
+        } catch { /* noop */ }
+        return;
+      }
+      this.handleChunk(peer, e.data as ArrayBuffer);
     };
+  }
+
+  /** 处理二进制分块帧:按 transferId 缓冲,收齐后组装 Blob 回调。 */
+  private handleChunk(peer: PeerId, buf: ArrayBuffer) {
+    if (buf.byteLength < CHUNK_HEADER) return;
+    const dv = new DataView(buf);
+    const transferId = dv.getUint32(0);
+    const seq = dv.getUint32(4);
+    const total = dv.getUint32(8);
+    let m = this.chunkBufs.get(peer);
+    if (!m) { m = new Map(); this.chunkBufs.set(peer, m); }
+    let cb = m.get(transferId);
+    if (!cb) {
+      cb = { total, parts: new Array(total), received: 0, ts: Date.now() };
+      m.set(transferId, cb);
+    }
+    cb.ts = Date.now();
+    cb.parts[seq] = buf.slice(CHUNK_HEADER);
+    cb.received++;
+    if (cb.received >= cb.total) {
+      m.delete(transferId);
+      const blob = new Blob(cb.parts, { type: 'application/octet-stream' });
+      this.blobCbs.forEach((fn) => fn(peer, transferId, blob));
+    }
+  }
+
+  /** GC 超时的分块缓冲,防对端崩溃未发完导致内存泄漏。 */
+  private gcChunkBufs() {
+    const now = Date.now();
+    for (const [peer, m] of this.chunkBufs) {
+      for (const [id, buf] of m) {
+        if (now - buf.ts > CHUNK_GC_MAX_AGE) m.delete(id);
+      }
+      if (m.size === 0) this.chunkBufs.delete(peer);
+    }
   }
 
   /**

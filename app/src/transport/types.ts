@@ -10,4 +10,7 @@ export interface Transport {
   onSignalingState(cb: (ready: boolean) => void): void;
   onPeerState(cb: (peer: PeerId, state: 'connecting' | 'open' | 'closed') => void): void;
   send(to: PeerId, type: DcEnvelope['type'], payload: unknown): Promise<void>;
+  /** 二进制分块发送(图片等大 blob)。transferId 关联 content 元数据。 */
+  sendBlob(to: PeerId, transferId: number, bytes: Uint8Array): Promise<void>;
+  onBlob(cb: (from: PeerId, transferId: number, blob: Blob) => void): void;
 }

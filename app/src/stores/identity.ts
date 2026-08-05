@@ -1,8 +1,6 @@
 import { reactive } from 'vue';
-import type { PeerContent } from 'shared';
 
 const ID_KEY = 'lps.identity.id';
-const CONTENT_KEY = 'lps.content';
 
 function genId(): string {
   // 32 位 hex(128 位随机),碰撞概率可忽略(生日界 ~2^64 设备)。
@@ -51,16 +49,6 @@ export function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-export function getOwnContent(): PeerContent | null {
-  const raw = localStorage.getItem(CONTENT_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as PeerContent;
-  } catch {
-    return null;
-  }
-}
-
-export function setOwnContent(c: PeerContent) {
-  localStorage.setItem(CONTENT_KEY, JSON.stringify(c));
-}
+// PeerContent 存储迁移到 IndexedDB(支持高清大图),封装在 content-db.ts。
+// 启动期 initContentStore() 预热到内存缓存,此处保持同步签名,上层零改动。
+export { getOwnContent, setOwnContent } from './content-db';

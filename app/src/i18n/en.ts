@@ -54,6 +54,7 @@ export const en: Messages = {
     fieldLocation: 'Location',
     fieldPhone: 'Phone',
     fieldContact: 'Contact',
+    fieldImage: 'Image',
     emptyText: '(empty)',
   },
   editor: {
@@ -71,6 +72,13 @@ export const en: Messages = {
     autoFitTitle: 'Auto-fit by longest line × paper width golden ratio',
     foldHint: 'Fold mode: A4 portrait, content only prints on the top A5 area; the bottom half is left blank and folded to the back.',
     preview: 'Preview (WYSIWYG)',
+    uploadImage: 'Upload Image',
+    imageHint: 'JPG / PNG / WebP, up to 20MB',
+    imageTooLarge: 'Image too large (max {max}MB)',
+    imageBadType: 'Unsupported image format',
+    imageReadFail: 'Failed to read image',
+    imageLoading: 'Loading…',
+    clearImage: 'Clear',
   },
   print: {
     hint: 'Tip: in the print dialog choose A4, no margins, and disable headers/footers.',

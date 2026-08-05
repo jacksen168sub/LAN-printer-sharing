@@ -6,6 +6,8 @@ import ContactEditor from './ContactEditor.vue';
 import ContactRenderer from './ContactRenderer.vue';
 import TextEditor from './TextEditor.vue';
 import TextRenderer from './TextRenderer.vue';
+import ImageEditor from './ImageEditor.vue';
+import ImageRenderer from './ImageRenderer.vue';
 
 export interface TemplateDef {
   type: ContentType;
@@ -42,6 +44,14 @@ export const TEMPLATES: Record<ContentType, TemplateDef> = {
     defaultLayout: { paper: 'A4', orientation: 'portrait', fold: 'none' },
     Editor: TextEditor,
     Renderer: TextRenderer,
+  },
+  image: {
+    type: 'image',
+    label: '图片',
+    defaultContent: { type: 'image', dataUrl: '', mime: '', width: 0, height: 0 },
+    defaultLayout: { paper: 'A4', orientation: 'portrait', fold: 'none' },
+    Editor: ImageEditor,
+    Renderer: ImageRenderer,
   },
 };
 

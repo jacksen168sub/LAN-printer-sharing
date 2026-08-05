@@ -49,6 +49,7 @@ function setFold(fold: PrintLayout['fold']) {
  * 全部字段统一采用该字号。无文本时不动(保留当前字号)。
  */
 function applyAutoFontSize() {
+  if (content.value.type === 'image') return; // 图片无字号概念
   const fs = computeGoldenFontSize(content.value, layout.value);
   if (fs == null) return;
   const clamped = Math.max(6, Math.min(200, Math.round(fs)));
@@ -126,7 +127,7 @@ function saveAndPrint() {
         </div>
         <div class="control">
           <span class="control-label">{{ t('editor.fontSize') }}</span>
-          <button type="button" class="btn" @click="applyAutoFontSize" :title="t('editor.autoFitTitle')">{{ t('editor.autoFit') }}</button>
+          <button v-if="contentType !== 'image'" type="button" class="btn" @click="applyAutoFontSize" :title="t('editor.autoFitTitle')">{{ t('editor.autoFit') }}</button>
         </div>
       </div>
       <div class="hint" v-if="layout.fold === 'half-long-edge'">{{ t('editor.foldHint') }}</div>

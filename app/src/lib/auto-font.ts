@@ -17,9 +17,10 @@ function longestLine(content: Content): string {
     lines.push(...content.location.text.split('\n'));
     lines.push(...content.phone.text.split('\n'));
     lines.push(...content.contact.text.split('\n'));
-  } else {
+  } else if (content.type === 'text') {
     lines.push(...content.text.text.split('\n'));
   }
+  // image: 无文本,lines 为空 → computeGoldenFontSize 返回 null
   let best = '';
   for (const l of lines) if (l.length > best.length) best = l;
   return best;

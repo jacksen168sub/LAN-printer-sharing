@@ -36,7 +36,11 @@ function toFields(c: Content): FieldItem[] {
       if (c.contact.text)  f.push({ key: 'contact',  label: t('peer.fieldContact'),  value: c.contact.text,  kind: 'text' });
       return f;
     }
-    // 预留:case 'image': return [{ key: 'img', label: ..., value: c.url, kind: 'image' }]
+    case 'image': {
+      const f: FieldItem[] = [];
+      if (c.dataUrl) f.push({ key: 'img', label: t('peer.fieldImage'), value: c.dataUrl, kind: 'image' });
+      return f;
+    }
     default:
       return [];
   }
@@ -76,7 +80,10 @@ function downloadField(f: FieldItem) {
     <div v-if="fields.length" class="fields">
       <div v-for="f in fields" :key="f.key" class="field">
         <div class="field-label">{{ f.label }}</div>
-        <div class="field-value">{{ f.value }}</div>
+        <div v-if="f.kind === 'image' && f.value" class="field-image">
+          <img :src="f.value" :alt="f.label" />
+        </div>
+        <div v-else class="field-value">{{ f.value }}</div>
         <button
           v-if="f.kind === 'text'"
           type="button"
@@ -110,6 +117,8 @@ function downloadField(f: FieldItem) {
 .field { display: flex; gap: 10px; align-items: baseline; }
 .field-label { font-size: 12px; color: #888; flex: none; min-width: 48px; font-weight: 500; }
 .field-value { flex: 1; min-width: 0; font-size: 13px; color: #333; word-break: break-all; white-space: pre-wrap; }
+.field-image { flex: 1; min-width: 0; }
+.field-image img { max-width: 100%; max-height: 120px; object-fit: contain; border-radius: 4px; }
 .mini-btn {
   font: inherit;
   font-size: 11px;

@@ -56,8 +56,23 @@ export interface TextContent {
   text: FieldStyle;
 }
 
+/**
+ * 单图模板:本地上传,A4 contain 保持比例居中(可能留白)。
+ * dataUrl 形态:本机存 base64 dataURL;peer 收到二进制后填 blob URL;传输时置空(字节走 ArrayBuffer 分块)。
+ * transferId:传输时标识待传图片,接收方据此关联二进制流;本机持久化时可为空。
+ */
+export interface ImageContent {
+  type: 'image';
+  dataUrl: string;
+  mime: string;            // 'image/jpeg' | 'image/png' | 'image/webp'
+  width: number;           // 自然像素宽
+  height: number;          // 自然像素高
+  name?: string;           // 原始文件名(下载时用)
+  transferId?: number;     // 传输用:关联二进制分块流(uint32)
+}
+
 // 预留:未来加新模板只需在这里扩 union
-export type Content = ContactContent | TextContent;
+export type Content = ContactContent | TextContent | ImageContent;
 export type ContentType = Content['type'];
 
 /** 打印布局 */
