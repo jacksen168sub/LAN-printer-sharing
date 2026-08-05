@@ -10,6 +10,7 @@ export const en: Messages = {
     edit: 'Edit',
     copy: 'Copy',
     copied: 'Copied',
+    download: 'Download',
   },
   home: {
     ownId: 'My ID',
@@ -49,6 +50,11 @@ export const en: Messages = {
     waitingContent: 'No content received from this device yet…',
     waitingHint: 'If no content appears for a long time, make sure the other side has edited and saved, and both devices are on the same LAN with signaling connected.',
     goEdit: 'Edit',
+    contentValue: 'Content',
+    fieldLocation: 'Location',
+    fieldPhone: 'Phone',
+    fieldContact: 'Contact',
+    emptyText: '(empty)',
   },
   editor: {
     title: 'Edit',

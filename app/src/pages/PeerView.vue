@@ -5,6 +5,7 @@ import { computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import type { PrintLayout } from 'shared';
 import PrintSheet from '../components/PrintSheet.vue';
+import ContentValueCard from '../components/ContentValueCard.vue';
 import Tip from '../components/Tip.vue';
 import { network, requestContent } from '../stores/network';
 import { formatId, shortId } from '../stores/identity';
@@ -49,9 +50,14 @@ function doPrint() {
       <button v-if="peerContent" type="button" class="btn btn-primary" @click="doPrint">{{ t('common.print') }}</button>
     </div>
 
-    <div v-if="peerContent" class="sheet-area">
-      <PrintSheet :content="peerContent.content" :layout="peerContent.layout" :auto-fit="true" />
-    </div>
+    <template v-if="peerContent">
+      <div class="sheet-area">
+        <PrintSheet :content="peerContent.content" :layout="peerContent.layout" :auto-fit="true" />
+      </div>
+
+      <!-- 底部:内容文本值 + 复制按钮(打印时 .no-print 隐藏) -->
+      <ContentValueCard :content="peerContent.content" />
+    </template>
 
     <section v-else class="card no-print">
       <div class="empty">{{ t('peer.waitingContent') }}</div>

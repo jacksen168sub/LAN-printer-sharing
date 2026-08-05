@@ -5,6 +5,7 @@ import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import type { PrintLayout } from 'shared';
 import PrintSheet from '../components/PrintSheet.vue';
+import ContentValueCard from '../components/ContentValueCard.vue';
 import { getOwnContent } from '../stores/identity';
 import { useI18n } from 'vue-i18n';
 
@@ -33,13 +34,14 @@ function doPrint() {
 </script>
 
 <template>
-  <section v-if="own && content && layout">
+  <section v-if="own && content && layout" class="print-page">
     <div class="toolbar no-print">
       <button type="button" class="btn" @click="router.back()">{{ t('common.back') }}</button>
       <button type="button" class="btn btn-primary" @click="doPrint">{{ t('common.print') }}</button>
     </div>
     <div class="hint no-print">{{ t('print.hint') }}</div>
     <PrintSheet :content="content" :layout="layout" :auto-fit="true" />
+    <ContentValueCard :content="content" />
   </section>
   <section v-else class="card no-print">
     <p>{{ t('print.empty') }}<router-link to="/edit">{{ t('print.goEdit') }}</router-link>.</p>
@@ -47,7 +49,8 @@ function doPrint() {
 </template>
 
 <style scoped>
-.toolbar { display: flex; gap: 8px; margin-bottom: 8px; justify-content: space-between; }
-.hint { font-size: 12px; color: #888; margin-bottom: 8px; }
+.print-page { display: flex; flex-direction: column; gap: 12px; }
+.toolbar { display: flex; gap: 8px; justify-content: space-between; }
+.hint { font-size: 12px; color: #888; }
 .card { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 </style>

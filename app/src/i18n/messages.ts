@@ -10,6 +10,7 @@ export interface Messages {
     edit: string;
     copy: string;
     copied: string;
+    download: string;
   };
   home: {
     ownId: string;
@@ -49,6 +50,11 @@ export interface Messages {
     waitingContent: string;
     waitingHint: string;
     goEdit: string;
+    contentValue: string;
+    fieldLocation: string;
+    fieldPhone: string;
+    fieldContact: string;
+    emptyText: string;
   };
   editor: {
     title: string;

@@ -10,6 +10,7 @@ export const zhCN: Messages = {
     edit: '编辑',
     copy: '复制',
     copied: '已复制',
+    download: '下载',
   },
   home: {
     ownId: '本机 ID',
@@ -49,6 +50,11 @@ export const zhCN: Messages = {
     waitingContent: '尚未收到该设备的内容…',
     waitingHint: '若长时间无内容,请确认对方已编辑并保存,且双方都在同一局域网、信令已连接。',
     goEdit: '去编辑',
+    contentValue: '内容',
+    fieldLocation: '地点',
+    fieldPhone: '电话',
+    fieldContact: '联系人',
+    emptyText: '(空)',
   },
   editor: {
     title: '编辑',
