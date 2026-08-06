@@ -85,7 +85,6 @@ function clearImage() {
       <input
         type="file"
         accept="image/jpeg,image/png,image/webp"
-        capture="environment"
         hidden
         @change="onFile"
       />
