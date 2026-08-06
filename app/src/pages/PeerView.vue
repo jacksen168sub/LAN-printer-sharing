@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // 对端内容预览/打印页:进入时主动 req-content 拉取,收到后用 PrintSheet 渲染。
 // 打印前按对方布局方向注入 @page size,打印时 .no-print 隐藏界面、只输出纸张。
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, provide, toRef } from 'vue';
 import { useRouter } from 'vue-router';
 import type { PrintLayout } from 'shared';
 import PrintSheet from '../components/PrintSheet.vue';
@@ -15,6 +15,9 @@ import { peerStateLabel } from '../i18n';
 const props = defineProps<{ id: string }>();
 const router = useRouter();
 const { t } = useI18n();
+// 注入 peer id:ImageRenderer 据此读 network.peerImageProgress 显示传输百分比
+// (PrintView 本机预览不 provide,inject 得 null → 不显示进度)
+provide('peer-id', toRef(props, 'id'));
 
 const peerContent = computed(() => network.peerContents[props.id] ?? null);
 const peerStateLabel_ = computed(() => peerStateLabel(network.peerStates[props.id]));

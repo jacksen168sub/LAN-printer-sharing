@@ -13,4 +13,6 @@ export interface Transport {
   /** 二进制分块发送(图片等大 blob)。transferId 关联 content 元数据。 */
   sendBlob(to: PeerId, transferId: number, bytes: Uint8Array): Promise<void>;
   onBlob(cb: (from: PeerId, transferId: number, blob: Blob) => void): void;
+  /** 分块传输进度:每收到一块回调 received/total,供 UI 显示加载百分比。 */
+  onChunkProgress(cb: (from: PeerId, transferId: number, received: number, total: number) => void): void;
 }

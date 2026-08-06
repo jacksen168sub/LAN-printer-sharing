@@ -51,6 +51,7 @@ export class WebRTCTransport implements Transport {
   // 二进制分块缓冲:peer → (transferId → ChunkBuf)
   private chunkBufs = new Map<PeerId, Map<number, ChunkBuf>>();
   private blobCbs: Array<(from: PeerId, transferId: number, blob: Blob) => void> = [];
+  private progressCbs: Array<(from: PeerId, transferId: number, received: number, total: number) => void> = [];
   private chunkGcTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(self: PeerId, signalingUrl: string) {
@@ -91,6 +92,10 @@ export class WebRTCTransport implements Transport {
 
   onBlob(cb: (from: PeerId, transferId: number, blob: Blob) => void) {
     this.blobCbs.push(cb);
+  }
+
+  onChunkProgress(cb: (from: PeerId, transferId: number, received: number, total: number) => void) {
+    this.progressCbs.push(cb);
   }
 
   onSignalingState(cb: (ready: boolean) => void) {
@@ -212,6 +217,10 @@ export class WebRTCTransport implements Transport {
     cb.ts = Date.now();
     cb.parts[seq] = buf.slice(CHUNK_HEADER);
     cb.received++;
+    // 进度回调:收齐前每块都通知,供 UI 显示百分比;最后一块走 onBlob 完成态,无需回调
+    if (cb.received < cb.total) {
+      for (const fn of this.progressCbs) fn(peer, transferId, cb.received, cb.total);
+    }
     if (cb.received >= cb.total) {
       m.delete(transferId);
       const blob = new Blob(cb.parts, { type: 'application/octet-stream' });

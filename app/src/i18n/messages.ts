@@ -56,6 +56,7 @@ export interface Messages {
     fieldContact: string;
     fieldImage: string;
     emptyText: string;
+    imageLoading: string; // 图片分块传输中
   };
   editor: {
     title: string;

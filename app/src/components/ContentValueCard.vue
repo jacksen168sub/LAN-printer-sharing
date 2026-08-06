@@ -7,7 +7,7 @@
 //   2. 新字段操作 → FieldItem.kind 加值 + 模板加 v-else-if 分支
 // 当前预留:text(复制) / image(下载) 两种 kind。
 import { computed, ref } from 'vue';
-import type { Content } from 'shared';
+import type { Content, ImageContent } from 'shared';
 import { useI18n } from 'vue-i18n';
 
 const props = defineProps<{ content: Content }>();
@@ -47,6 +47,13 @@ function toFields(c: Content): FieldItem[] {
 }
 
 const fields = computed(() => toFields(props.content));
+
+// 图片传输中(与 ImageRenderer 一致判断):此态下底部卡片显示"加载中"而非"无内容"
+const imageLoading = computed(() =>
+  props.content.type === 'image' &&
+  (props.content as ImageContent).transferId != null &&
+  !(props.content as ImageContent).dataUrl,
+);
 
 // 每字段独立复制状态:key → 是否刚复制(1.5s 内显示"已复制")
 const copiedKey = ref<string | null>(null);
@@ -100,6 +107,7 @@ function downloadField(f: FieldItem) {
         >{{ t('common.download') }}</button>
       </div>
     </div>
+    <div v-else-if="imageLoading" class="empty">{{ t('peer.imageLoading') }}</div>
     <div v-else class="empty">{{ t('peer.emptyText') }}</div>
   </section>
 </template>

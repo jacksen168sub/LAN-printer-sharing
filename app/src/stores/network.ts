@@ -34,6 +34,7 @@ interface NetworkState {
   peerStates: Record<string, 'connecting' | 'open' | 'closed'>;
   peerContents: Record<string, PeerContent>;
   peerLatencies: Record<string, number>;
+  peerImageProgress: Record<string, { received: number; total: number }>;
   myIp: string | null;
   myAutoCode: string | null;
   myRoom: string | null;
@@ -46,6 +47,7 @@ const state = reactive<NetworkState>({
   peerStates: {},
   peerContents: {},
   peerLatencies: {},
+  peerImageProgress: {},
   myIp: null,
   myAutoCode: null,
   myRoom: null,
@@ -98,6 +100,7 @@ export function startNetwork() {
       const nextContents = { ...state.peerContents };
       const nextStates = { ...state.peerStates };
       const nextLatencies = { ...state.peerLatencies };
+      const nextProgress = { ...state.peerImageProgress };
       for (const p of removed) {
         // revoke peer 图片的 blob URL,防内存泄漏
         const pc = nextContents[p];
@@ -107,10 +110,12 @@ export function startNetwork() {
         delete nextContents[p];
         delete nextStates[p];
         delete nextLatencies[p];
+        delete nextProgress[p];
       }
       state.peerContents = nextContents;
       state.peerStates = nextStates;
       state.peerLatencies = nextLatencies;
+      state.peerImageProgress = nextProgress;
     }
   });
   transport.onMessage((env) => {
@@ -145,6 +150,14 @@ export function startNetwork() {
       ...state.peerContents,
       [from]: { ...pc, content: { ...pc.content, dataUrl: url, transferId: undefined } },
     };
+    // 收齐:清除该 peer 的传输进度
+    const nextProg = { ...state.peerImageProgress };
+    delete nextProg[from];
+    state.peerImageProgress = nextProg;
+  });
+  transport.onChunkProgress((from, _transferId, received, total) => {
+    // 分块进度:供 PeerView 的 ImageRenderer 显示加载百分比
+    state.peerImageProgress = { ...state.peerImageProgress, [from]: { received, total } };
   });
   transport.onSignalingState((ready) => {
     state.signalingReady = ready;
@@ -229,6 +242,7 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
     get messages() { return [...state.messages]; },
     get peerContents() { return state.peerContents; },
     get peerLatencies() { return state.peerLatencies; },
+    get peerImageProgress() { return state.peerImageProgress; },
     ping: (to: PeerId) => pingPeer(to),
     reqContent: (to: PeerId) => requestContent(to),
   };

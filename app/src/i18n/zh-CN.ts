@@ -56,6 +56,7 @@ export const zhCN: Messages = {
     fieldContact: '联系人',
     fieldImage: '图片',
     emptyText: '(空)',
+    imageLoading: '图片加载中…',
   },
   editor: {
     title: '编辑',

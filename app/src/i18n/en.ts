@@ -56,6 +56,7 @@ export const en: Messages = {
     fieldContact: 'Contact',
     fieldImage: 'Image',
     emptyText: '(empty)',
+    imageLoading: 'Loading image…',
   },
   editor: {
     title: 'Edit',
